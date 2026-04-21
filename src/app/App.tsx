@@ -34,6 +34,7 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showSignup, setShowSignup] = useState(false);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState("home");
   const [occasionFilter, setOccasionFilter] = useState("all");
   const [weatherFilter, setWeatherFilter] = useState("all");
@@ -46,14 +47,74 @@ export default function App() {
     SavedOutfit[]
   >([]);
 
+  const getStorageKeys = (userId: string) => ({
+    clothing: `closet:clothing:${userId}`,
+    outfits: `closet:outfits:${userId}`,
+  });
+
+  const loadUserClosetData = (userId: string) => {
+    const keys = getStorageKeys(userId);
+
+    try {
+      const rawClothingItems = localStorage.getItem(keys.clothing);
+      const rawSavedOutfits = localStorage.getItem(keys.outfits);
+
+      const parsedClothingItems = rawClothingItems
+        ? (JSON.parse(rawClothingItems) as ClothingItem[])
+        : [];
+
+      const parsedSavedOutfits = rawSavedOutfits
+        ? (JSON.parse(rawSavedOutfits) as Array<Omit<SavedOutfit, "savedAt"> & { savedAt: string }>)
+        : [];
+
+      setClothingItems(parsedClothingItems);
+      setSavedOutfits(
+        parsedSavedOutfits.map((outfit) => ({
+          ...outfit,
+          savedAt: new Date(outfit.savedAt),
+        })),
+      );
+    } catch {
+      setClothingItems([]);
+      setSavedOutfits([]);
+    }
+  };
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setIsAuthenticated(Boolean(user));
+      setCurrentUserId(user?.uid ?? null);
+
+      if (user?.uid) {
+        loadUserClosetData(user.uid);
+      } else {
+        setClothingItems([]);
+        setSavedOutfits([]);
+      }
+
       setIsAuthLoading(false);
     });
 
     return unsubscribe;
   }, []);
+
+  useEffect(() => {
+    if (!currentUserId) {
+      return;
+    }
+
+    const keys = getStorageKeys(currentUserId);
+    localStorage.setItem(keys.clothing, JSON.stringify(clothingItems));
+  }, [clothingItems, currentUserId]);
+
+  useEffect(() => {
+    if (!currentUserId) {
+      return;
+    }
+
+    const keys = getStorageKeys(currentUserId);
+    localStorage.setItem(keys.outfits, JSON.stringify(savedOutfits));
+  }, [savedOutfits, currentUserId]);
 
   const getFirebaseErrorMessage = (error: unknown) => {
     if (typeof error === "object" && error !== null && "code" in error) {
